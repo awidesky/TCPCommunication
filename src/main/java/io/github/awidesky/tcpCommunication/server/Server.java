@@ -11,8 +11,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -34,8 +32,6 @@ import io.github.awidesky.tcpCommunication.Protocol;
 
 public class Server {
 
-	public static final Charset METADATACHARSET = StandardCharsets.UTF_8;
-	
 	private ExecutorService pool;
 	private Selector selector;
 	private ServerSocketChannel serverSocket;
@@ -175,7 +171,7 @@ public class Server {
 	}
 	
 	public void stop() {
-		
+		//TODO
 	}
 	
 	public static String getIP() {
@@ -237,7 +233,7 @@ public class Server {
 				logger.logVerbose("Read header : " + ch.read(header) + "byte(s)");
 				if(!header.hasRemaining()) { // header is fully read
 					header.flip();
-					String[] meta = METADATACHARSET.decode(header).toString().split(":");
+					String[] meta = Protocol.METADATACHARSET.decode(header).toString().split(":");
 					header = null;
 					if (Stream.of(MessageType.values()).map(MessageType::getStr).anyMatch(meta[0]::equals)) {
 						Set<String> includeSet = Set.of(), excludeSet = Set.of();

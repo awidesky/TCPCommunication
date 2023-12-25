@@ -34,7 +34,7 @@ public class RecievedPacket {
 		if(!exclude.isEmpty()) {
 			metaStr.append(":").append("EXCLUDE=").append(exclude.stream().collect(Collectors.joining(":")));
 		}
-		byte[] headerStr = Server.METADATACHARSET.encode(metaStr.toString()).array();
+		byte[] headerStr = Protocol.METADATACHARSET.encode(metaStr.toString()).array();
 		byte[] sizes = ByteBuffer.allocate(Protocol.HEADERSIZEBUFFERSIZE).putInt(headerStr.length).putInt(data.length).array();
 		headerOutput = new byte[Protocol.HEADERSIZEBUFFERSIZE + headerStr.length];
 		System.arraycopy(sizes, 0, headerOutput, 0, sizes.length);

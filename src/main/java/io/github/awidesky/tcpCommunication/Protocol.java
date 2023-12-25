@@ -1,8 +1,13 @@
 package io.github.awidesky.tcpCommunication;
 
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+
 public class Protocol {
 
 	public final static int HEADERSIZEBUFFERSIZE = 8;
+
+	public static final Charset METADATACHARSET = StandardCharsets.UTF_8;
 	
 	
 	/**
