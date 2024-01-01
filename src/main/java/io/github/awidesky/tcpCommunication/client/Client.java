@@ -16,6 +16,8 @@ public class Client {
 	private SocketChannel clientSocket;
 	private int port;
 	
+	private String hash;
+	
 	private final Logger logger;
 	public Client() throws IOException {
 		this(System.out);
@@ -42,6 +44,8 @@ public class Client {
 			logger.log("Try connecting... : " + addr.toString());
 			clientSocket.connect(addr);
 			logger.log("Client connected to : " + clientSocket.getRemoteAddress().toString());
+			
+			logger.log("Received ID : ");
 		} catch (IOException e) {
 			if(clientSocket.isOpen()) stop();
 			throw e;

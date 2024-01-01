@@ -42,11 +42,11 @@ public class Server {
 	
 	private final Map<String, ConnectedClient> clients = new HashMap<>();
 	
-	public Server() throws IOException {
+	public Server() {
 		this(System.out);
 	}
 
-	public Server(OutputStream os) throws IOException {
+	public Server(OutputStream os) {
 		loggerThread.setLogDestination(os, true);
 		loggerThread.setDatePrefixAllChildren(new SimpleDateFormat("[kk:mm:ss.SSS]"));
 		logger = loggerThread.getLogger("[Server|" + getIP() + ":" + port + "] ");
@@ -119,8 +119,15 @@ public class Server {
 			ConnectedClient client = new ConnectedClient(sc, loggerThread.getLogger());
 			clients.put(client.hash, client);
 			sc.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, client);
+			RecievedPacket packet = new RecievedPacket("SERVER", MessageType.ANNOUNCEMENT, Set.of(), Set.of());
+			//TODO : send all hashes of Clients. 
+			client.queue.put(ByteBuffer.wrap(packet.getHeaderOutput()));
+			client.queue.put(ByteBuffer.wrap(packet.getData()));
 			logger.log("Connected : " + sc.getRemoteAddress());
 		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
@@ -157,10 +164,9 @@ public class Server {
 			str = str.filter(c -> packet.include.contains(c.hash));
 		}
 		
-		byte[] header = packet.getHeaderOutput();
 		str.filter(c -> !packet.exclude.contains(c.hash)).forEach(c -> {
 			try {
-				c.queue.put(ByteBuffer.wrap(header));
+				c.queue.put(ByteBuffer.wrap(packet.getHeaderOutput()));
 				c.queue.put(ByteBuffer.wrap(packet.getData()));
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block

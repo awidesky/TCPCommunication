@@ -2,9 +2,15 @@ package io.github.awidesky.tcpCommunication;
 
 public enum MessageType {
 
+	/* The packet contains the message(actual data that client has sent) */
 	MESSAGE("MSG"),
+	/* A client disconnected */
 	DISCONNECT("BYE"),
-	ANNOUNCEMENT("ANN");
+	/* Server announcement */
+	ANNOUNCEMENT("ANN"),
+	/* Hashes(id) of all currently connected clients(first one is the requester's) */
+	CLIENTHASHES("IDS");
+	
 	
 	private String str;
 	

@@ -28,7 +28,7 @@ public class RecievedPacket {
 	public void putData(byte[] data) {
 		this.data = data;
 		StringBuilder metaStr = new StringBuilder().append(type.getStr()).append(":").append(from);
-		if(!include.isEmpty()) {
+		if(!include.isEmpty()) { //TODO : skip if null too
 			metaStr.append(":").append("INCLUDE=").append(include.stream().collect(Collectors.joining(":")));
 		}
 		if(!exclude.isEmpty()) {
