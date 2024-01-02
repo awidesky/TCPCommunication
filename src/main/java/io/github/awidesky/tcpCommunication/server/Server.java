@@ -16,21 +16,18 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.stream.Stream;
 
 import io.github.awidesky.guiUtil.Logger;
 import io.github.awidesky.guiUtil.LoggerThread;
 import io.github.awidesky.guiUtil.SwingDialogs;
 import io.github.awidesky.jCipherUtil.hash.Hashes;
 import io.github.awidesky.jCipherUtil.messageInterface.InPut;
-import io.github.awidesky.tcpCommunication.MessageType;
 import io.github.awidesky.tcpCommunication.Protocol;
 
-public class Server {
+public abstract class Server {
 
 	private ExecutorService pool;
 	private Selector selector;
@@ -38,9 +35,9 @@ public class Server {
 	private int port;
 	
 	private final LoggerThread loggerThread = new LoggerThread();
-	private final Logger logger;
+	protected final Logger logger;
 	
-	private final Map<String, ConnectedClient> clients = new HashMap<>();
+	protected final Map<String, Connection> clients = new HashMap<>();
 	
 	public Server() throws IOException {
 		this(System.out);
@@ -53,11 +50,11 @@ public class Server {
 		loggerThread.start();
 	}
 	
-	public void connect(int port) throws IOException {
-		connect(port, Runtime.getRuntime().availableProcessors());
+	public void open(int port) throws IOException {
+		open(port, Runtime.getRuntime().availableProcessors());
 	}
 	
-	public void connect(int port, int threads) throws IOException {
+	public void open(int port, int threads) throws IOException {
 		if(serverSocket != null) {
 			logger.log("Reconnecting to port " + port + " - close current server");
 			stop();
@@ -72,7 +69,7 @@ public class Server {
 			serverSocket.configureBlocking(false);
 			serverSocket.bind(new InetSocketAddress(this.port));
 			serverSocket.register(selector, SelectionKey.OP_ACCEPT);
-			logger.log("Server is opended with " + threads + "threads to port " + port);
+			logger.log("Server is opended with " + threads + " threads to port " + port);
 		} catch (IOException e) {
 			if(serverSocket.isOpen()) stop();
 			throw e;
@@ -82,6 +79,7 @@ public class Server {
 	
 	private void listen() {
 		while (true) {
+			System.out.println(123);
 			try {
 				int keys = selector.select();
 				if (keys == 0)
@@ -95,9 +93,11 @@ public class Server {
 					if (key.isAcceptable()) {
 						pool.submit(this::accept);
 					} else if (key.isReadable()) {
-						pool.submit(() -> read((ConnectedClient) key.attachment()));
+						System.out.println("asdf");
+						pool.submit(() -> read((Connection) key.attachment()));
 					} else if (key.isWritable()) {
-						pool.submit(() -> write((ConnectedClient) key.attachment()));
+						System.out.println("hjkl");
+						pool.submit(() -> write((Connection) key.attachment()));
 					} else {
 						logger.log("Unsupported ready-operation : \"" + key.interestOps() + "\" from selected key : "
 									+ ((SocketChannel) key.channel()).getRemoteAddress());
@@ -116,87 +116,57 @@ public class Server {
 	protected void accept() {
 		try {
 			SocketChannel sc = serverSocket.accept();
-			ConnectedClient client = new ConnectedClient(sc, loggerThread.getLogger());
+			System.out.println(1);
+			Connection client = new Connection(sc, loggerThread.getLogger());
+			System.out.println(2);
 			clients.put(client.hash, client);
+			System.out.println(3);
 			sc.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, client);
-			logger.log("Connected : " + sc.getRemoteAddress());
+			logger.log("Connected : " + sc.getRemoteAddress() + "(hash : " + client.hash + ")");
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
 
-	protected void read(ConnectedClient client) {
-		try {
-			RecievedPacket ret = client.read();
-			if (ret != null) {
-				if (ret.type == MessageType.DISCONNECT) {
-					clients.remove(client.hash);
-				}
-				broadCast(ret);
-			}
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	}
-
-
-	protected void write(ConnectedClient client) {
-		try {
-			client.send();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	}
-
-	private void broadCast(RecievedPacket packet) {
-		Stream<ConnectedClient> str = clients.values().parallelStream();
-		if(!packet.include.isEmpty()) {
-			str = str.filter(c -> packet.include.contains(c.hash));
-		}
-		
-		byte[] header = packet.getHeaderOutput();
-		str.filter(c -> !packet.exclude.contains(c.hash)).forEach(c -> {
-			try {
-				c.queue.put(ByteBuffer.wrap(header));
-				c.queue.put(ByteBuffer.wrap(packet.getData()));
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		});
-		
-	}
+	protected abstract void read(Connection client);
+	protected abstract void write(Connection client);
 	
 	public void stop() {
-		//TODO
+		clients.values().parallelStream().forEach(Connection::close);
+		clients.clear();
+		try {
+			serverSocket.close();
+		} catch (IOException e) {
+			SwingDialogs.error("Unable to close ServerSocket", "%e%", e, false);
+		}
+		serverSocket = null;
 	}
 	
 	public static String getIP() {
 		try (BufferedReader br = new BufferedReader(new InputStreamReader(new URL("http://checkip.amazonaws.com/").openStream()))) {
 			return br.readLine();
-		} catch (IOException e) {
+		} catch (Exception e) {
 			SwingDialogs.error("Unable to find the server's IP", "%e%", e, true);
-			return null;
+			return "IP_Unknown";
 		}
 	}
 	
-	protected class ConnectedClient {
+	
+	protected class Connection {
 		private final SocketChannel ch;
 		private final String hash;
 		private final Logger logger;
 		
 		final LinkedBlockingQueue<ByteBuffer> queue;
 		
-		public ConnectedClient(SocketChannel ch, Logger logger) throws IOException {
+		public Connection(SocketChannel ch, Logger logger) throws IOException {
 			this.ch = ch;
 			String address = ch.getRemoteAddress().toString();
-			hash = Hashes.SHA_512.toHex(InPut.from(address + new Random().nextLong()));
+			hash = Hashes.SHA_512_256.toHex(InPut.from(address + new Random().nextLong()));
 			this.logger = logger;
-			this.logger.setPrefix(address);
-			this.logger.log("Client hash : " + hash);
+			this.logger.setPrefix("[Connection " + hash.substring(0, 8) + "] ");
+			this.logger.log("Connected client hash : " + hash + ", address : " + address);
 			queue = new LinkedBlockingQueue<ByteBuffer>();
 			
 		}
@@ -205,60 +175,47 @@ public class Server {
 			int read = -1;
 			ByteBuffer buf;
 			while((buf = queue.peek()) != null || read != 0) {
-				logger.logVerbose("Write data : " + (read = ch.write(buf)) + "byte(s)");
+				if(buf.capacity() == 0) {
+					logger.log("Closing connection now...");
+					close();
+				}
+				logger.log("Write data : " + (read = ch.write(buf)) + "byte(s)");
 				if(!buf.hasRemaining()) queue.poll();
 			}
 		}
 
-		private ByteBuffer sizes = ByteBuffer.allocate(Protocol.HEADERSIZEBUFFERSIZE);
-		private int headerLen = -1;
-		private int dataLen = -1;
+		private ByteBuffer sizes = ByteBuffer.allocate(Protocol.HeaderSize);
+		private int packageLen = 0;
 		
-		private ByteBuffer header = null;
 		private ByteBuffer data = null;
-		private RecievedPacket packet;
 		
-		public RecievedPacket read() throws IOException {
+		public byte[] read() throws IOException {
 			if(sizes.hasRemaining()) { //sizes must be read first
-				logger.logVerbose("Read packet sizes : " + Protocol.formatExactByteSize(ch.read(sizes)));
+				logger.logVerbose("Read package sizes : " + Protocol.formatExactByteSize(ch.read(sizes)));
 				if(!sizes.hasRemaining()) {
 					sizes.flip();
-					headerLen = sizes.getInt();
-					dataLen = sizes.getInt();
-					header = ByteBuffer.allocate(headerLen);
-					data = ByteBuffer.allocate(dataLen);
-					logger.logVerbose("Packet sizes recieved - header length : " + headerLen + "bytes, data length : " + Protocol.formatExactByteSize(dataLen));
-				}
-			} else if(header != null) { //header must be read first
-				logger.logVerbose("Read header : " + ch.read(header) + "byte(s)");
-				if(!header.hasRemaining()) { // header is fully read
-					header.flip();
-					String[] meta = Protocol.METADATACHARSET.decode(header).toString().split(":");
-					header = null;
-					if (Stream.of(MessageType.values()).map(MessageType::getStr).anyMatch(meta[0]::equals)) {
-						Set<String> includeSet = Set.of(), excludeSet = Set.of();
-						for(int i = 1; i < meta.length; i++) {
-							if(meta[i].startsWith("EXCLUDE=")) {
-								excludeSet = Set.of(meta[i].substring("EXCLUDE=".length()).split(","));
-							} else if(meta[i].startsWith("INCLUDE=")) {
-								includeSet = Set.of(meta[i].substring("INCLUDE=".length()).split(","));
-							} else {
-								//TODO : error
-							}
-						}
-						packet = new RecievedPacket(hash, MessageType.valueOf(meta[0]), includeSet, excludeSet);
-					} else {
-						logger.log("Unknown message type : \"" + meta[0] + "\n");
-						//TODO : error, have to disconnect? just clear?
+					packageLen = sizes.getInt();
+					switch(packageLen) {
+					case Protocol.Client_GoodbyeNow:
+						logger.log("Client sent goodbye. Closing connection now without sending " + queue.size() + "package(s) in queue...");
+						close();
+						return null;
+					case Protocol.Client_Goodbye:
+						logger.log("Client sent goodbye. Closing connection after sending " + queue.size() + "package(s) in queue...");
+						clear();
+						return new byte[0];
+								
 					}
+					data = ByteBuffer.allocate(packageLen);
+					logger.log("Packet size recieved - package length : " + Protocol.formatExactByteSize(packageLen));
 				}
 			} else { //header is read. now read data
-				logger.logVerbose("Read packet data : " + Protocol.formatExactByteSize(ch.read(data)));
+				logger.log("Read package data : " + Protocol.formatExactByteSize(ch.read(data)));
 				if(!data.hasRemaining()) { //data is fully read
 					data.flip();
-					packet.putData(data.array());
+					byte[] ret = data.array();
 					clear();
-					return packet;
+					return ret;
 				}
 			}			
 			return null;
@@ -266,11 +223,19 @@ public class Server {
 		
 
 		public void clear() {
-			sizes = ByteBuffer.allocate(8);
-			headerLen = -1;
-			dataLen = -1;
-			header = null;
+			sizes = ByteBuffer.allocate(Protocol.HeaderSize);
+			packageLen = -1;
 			data = null;
+		}
+		
+		public void close() {
+			try {
+				this.ch.close();
+			} catch (IOException e) {
+				SwingDialogs.error("Unable to close connection with : " + hash, "%e%", e, false);
+			}
+			clients.remove(hash, this);
+			clear();
 		}
 	}
 }

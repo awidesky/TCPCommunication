@@ -5,7 +5,9 @@ import java.nio.charset.StandardCharsets;
 
 public class Protocol {
 
-	public final static int HEADERSIZEBUFFERSIZE = 8;
+	public static final int HeaderSize = 4;
+	public static final int Client_Goodbye = -1;
+	public static final int Client_GoodbyeNow = -2;
 
 	public static final Charset METADATACHARSET = StandardCharsets.UTF_8;
 	
