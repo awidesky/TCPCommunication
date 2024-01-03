@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -21,8 +22,8 @@ import io.github.awidesky.tcpCommunication.server.Server;
 
 class Test {
 	
-	private static final int PORT = 19132;
-	private static final int N = Runtime.getRuntime().availableProcessors() * 4;
+	private static final int PORT = new Random().nextInt(49152, 65536);
+	private static final int N = Runtime.getRuntime().availableProcessors() * 2;
 	private static final ExecutorService threadPool = Executors.newFixedThreadPool(N / 2);
 	private static final Charset charset = StandardCharsets.UTF_8;
 	
@@ -31,12 +32,10 @@ class Test {
 		Server server = new EchoServer();
 		server.open(PORT);
 		
-		Client[] clients = new Client[N];
 		List<Future<Set<String>>> futures = new LinkedList<>();
 		
 		for (int i = 0; i < N; i++) {
 			final int n = i;
-			clients[n] = new Client();
 			futures.add(threadPool.submit(() -> {
 				Client c = new Client();
 				c.connect("localhost", PORT);

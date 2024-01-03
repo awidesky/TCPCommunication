@@ -57,8 +57,12 @@ public class Client {
 	}
 	public void send(byte[] arr, int offset, int len) throws IOException {
 		if(closed) throw new ClosedChannelException();
+		ByteBuffer header = ByteBuffer.allocate(Protocol.HeaderSize).putInt(len).flip();
 		ByteBuffer buf = ByteBuffer.wrap(arr, offset, len);
-		logger.log("Sending " + Protocol.formatExactByteSize(len - offset) + " to server(total)");
+		
+		logger.log("Sending header (" + Protocol.formatExactByteSize(header.capacity()) + ") to server");
+		while(header.hasRemaining()) clientSocket.write(header);
+		logger.log("Sending package (" + Protocol.formatExactByteSize(len - offset) + ") to server...");
 		while(buf.hasRemaining()) {
 			logger.log("Sent " + Protocol.formatExactByteSize(clientSocket.write(buf)));
 		}
@@ -69,7 +73,7 @@ public class Client {
 		ByteBuffer header = ByteBuffer.allocate(Protocol.HeaderSize);
 		while(header.hasRemaining()) clientSocket.read(header);
 		int len = header.flip().getInt();
-		if(len == 0) {
+		if(len == Protocol.Goodbye) {
 			logger.log("Server sent goodbye. Closing connection...");
 			clientSocket.close();
 			clientSocket = null;
@@ -87,13 +91,13 @@ public class Client {
 	
 	public void disconnect() throws IOException {
 		logger.log("Sending goodbye to the server...");
-		ByteBuffer buf = ByteBuffer.allocate(Protocol.HeaderSize).putInt(Protocol.Client_Goodbye);
+		ByteBuffer buf = ByteBuffer.allocate(Protocol.HeaderSize).putInt(Protocol.Goodbye).flip();
 		while(buf.hasRemaining()) clientSocket.write(buf);
 	}
 	
 	public void disconnectNow() throws IOException {
 		logger.log("Sending goodbye to the server(disconnecting now)...");
-		ByteBuffer buf = ByteBuffer.allocate(Protocol.HeaderSize).putInt(Protocol.Client_GoodbyeNow);
+		ByteBuffer buf = ByteBuffer.allocate(Protocol.HeaderSize).putInt(Protocol.GoodbyeNow).flip();
 		while(buf.hasRemaining()) clientSocket.write(buf);
 		clientSocket.close();
 		closed = true;

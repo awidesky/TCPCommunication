@@ -6,8 +6,8 @@ import java.nio.charset.StandardCharsets;
 public class Protocol {
 
 	public static final int HeaderSize = 4;
-	public static final int Client_Goodbye = -1;
-	public static final int Client_GoodbyeNow = -2;
+	public static final int Goodbye = -1;
+	public static final int GoodbyeNow = -2;
 
 	public static final Charset METADATACHARSET = StandardCharsets.UTF_8;
 	
@@ -20,7 +20,7 @@ public class Protocol {
 		if(bytes == 0L) return "0byte";
 		
 		
-		String arr[] = {"B", "KB", "MB", "GB"};
+		String arr[] = {"byte", "KB", "MB", "GB"};
 		
 		for(String prefix : arr) {
 			if(bytes % 1024 != 0) {
