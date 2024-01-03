@@ -79,7 +79,6 @@ public abstract class Server {
 	
 	private void listen() {
 		while (true) {
-			System.out.println(123);
 			try {
 				int keys = selector.select();
 				if (keys == 0)
@@ -93,10 +92,8 @@ public abstract class Server {
 					if (key.isAcceptable()) {
 						pool.submit(this::accept);
 					} else if (key.isReadable()) {
-						System.out.println("asdf");
 						pool.submit(() -> read((Connection) key.attachment()));
 					} else if (key.isWritable()) {
-						System.out.println("hjkl");
 						pool.submit(() -> write((Connection) key.attachment()));
 					} else {
 						logger.log("Unsupported ready-operation : \"" + key.interestOps() + "\" from selected key : "
@@ -116,11 +113,11 @@ public abstract class Server {
 	protected void accept() {
 		try {
 			SocketChannel sc = serverSocket.accept();
-			System.out.println(1);
+			if(sc == null) return;
+			
+			sc.configureBlocking(false);
 			Connection client = new Connection(sc, loggerThread.getLogger());
-			System.out.println(2);
 			clients.put(client.hash, client);
-			System.out.println(3);
 			sc.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, client);
 			logger.log("Connected : " + sc.getRemoteAddress() + "(hash : " + client.hash + ")");
 		} catch (IOException e) {
