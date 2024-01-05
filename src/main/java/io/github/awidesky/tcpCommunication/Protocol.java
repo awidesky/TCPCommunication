@@ -7,7 +7,6 @@ public class Protocol {
 
 	public static final int HeaderSize = 4;
 	public static final int Goodbye = -1;
-	public static final int GoodbyeNow = -2;
 
 	public static final Charset METADATACHARSET = StandardCharsets.UTF_8;
 	
@@ -20,7 +19,7 @@ public class Protocol {
 		if(bytes == 0L) return "0byte";
 		
 		
-		String arr[] = {"byte", "KB", "MB", "GB"};
+		String arr[] = {"B", "KiB", "MiB", "GiB"};
 		
 		for(String prefix : arr) {
 			if(bytes % 1024 != 0) {

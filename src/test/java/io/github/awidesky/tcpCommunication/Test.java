@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -23,8 +24,8 @@ import io.github.awidesky.tcpCommunication.server.Server;
 class Test {
 	
 	private static final int PORT = new Random().nextInt(49152, 65536);
-	private static final int N = Runtime.getRuntime().availableProcessors() * 2;
-	private static final ExecutorService threadPool = Executors.newFixedThreadPool(N / 2);
+	private static final int N = Runtime.getRuntime().availableProcessors() / 2;
+	private static final ExecutorService threadPool = Executors.newFixedThreadPool(N);
 	private static final Charset charset = StandardCharsets.UTF_8;
 	
 	@org.junit.jupiter.api.Test
@@ -32,24 +33,26 @@ class Test {
 		Server server = new EchoServer();
 		server.open(PORT);
 		
-		List<Future<Set<String>>> futures = new LinkedList<>();
+		final String IP = "localhost";//Server.getIP(); 
 		
+		List<Future<List<String>>> futures = new LinkedList<>();
+		
+		System.out.println("[Test] Testing with " + N + " clients...");
 		for (int i = 0; i < N; i++) {
 			final int n = i;
 			futures.add(threadPool.submit(() -> {
 				Client c = new Client();
-				c.connect("localhost", PORT);
+				c.connect(IP, PORT);
 				c.send((n + "Hello").getBytes(charset));
 				c.send((n + "Bye").getBytes(charset));
+				List<String> ret = new LinkedList<>();
+				for(int j = 0; j < N*2; j++) ret.add(charset.decode(ByteBuffer.wrap(c.read())).toString());
 				c.disconnect();
-				byte[] b;
-				Set<String> ret = new LinkedHashSet<>();
-				while((b = c.read()) != null) ret.add(charset.decode(ByteBuffer.wrap(b)).toString());
 				return ret;
 			}));
 
 		}
-		List<Set<String>> results = futures.stream().map(t -> {
+		List<Collection<String>> results = futures.stream().map(t -> {
 			try {
 				return t.get();
 			} catch (InterruptedException | ExecutionException e) {
@@ -57,7 +60,9 @@ class Test {
 			}
 		}).toList();
 
-		results.stream().map(s -> s.stream().collect(Collectors.joining("\n"))).forEach(System.out::print);
+		server.close(5000);
+		
+		System.out.println("\n\nOutput of each clients:\n" + results.stream().map(s -> s.stream().collect(Collectors.joining("\n"))).collect(Collectors.joining("\n\n")) + "\nEnd of clients ouputs.\n\n");
 		
 		assertEquals(1, results.stream().distinct().limit(2).count());
 	}

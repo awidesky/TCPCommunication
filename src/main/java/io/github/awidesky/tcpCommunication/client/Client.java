@@ -10,12 +10,14 @@ import java.text.SimpleDateFormat;
 
 import io.github.awidesky.guiUtil.Logger;
 import io.github.awidesky.guiUtil.SimpleLogger;
+import io.github.awidesky.guiUtil.SwingDialogs;
 import io.github.awidesky.tcpCommunication.Protocol;
 
 public class Client {
 
 	private SocketChannel clientSocket;
 	private int port;
+	private String remoteAddress;
 	
 	private boolean closed;
 	private final Logger logger;
@@ -31,8 +33,8 @@ public class Client {
 	
 	public void connect(String ip, int port) throws IOException {
 		if(clientSocket != null) {
-			logger.log("Reconnecting to port " + port + " - close current connection");
-			disconnectNow();
+			SwingDialogs.error("Client is already opened!", "Client is already connected to : " + remoteAddress, null, true);
+			return;
 		}
 		
 		try {
@@ -43,9 +45,10 @@ public class Client {
 			InetSocketAddress addr = new InetSocketAddress(ip, this.port);
 			logger.log("Try connecting... : " + addr.toString());
 			clientSocket.connect(addr);
-			logger.log("Client connected to : " + clientSocket.getRemoteAddress().toString());
+			remoteAddress = clientSocket.getRemoteAddress().toString();
+			logger.log("Client connected to : " + remoteAddress);
 		} catch (IOException e) {
-			if(clientSocket.isOpen()) disconnectNow();
+			if(clientSocket.isOpen()) disconnect();
 			throw e;
 		}
 	}
@@ -89,17 +92,14 @@ public class Client {
 		return buf.array();
 	}
 	
+	
 	public void disconnect() throws IOException {
 		logger.log("Sending goodbye to the server...");
 		ByteBuffer buf = ByteBuffer.allocate(Protocol.HeaderSize).putInt(Protocol.Goodbye).flip();
 		while(buf.hasRemaining()) clientSocket.write(buf);
-	}
-	
-	public void disconnectNow() throws IOException {
-		logger.log("Sending goodbye to the server(disconnecting now)...");
-		ByteBuffer buf = ByteBuffer.allocate(Protocol.HeaderSize).putInt(Protocol.GoodbyeNow).flip();
-		while(buf.hasRemaining()) clientSocket.write(buf);
+		logger.log("Disconnecting...");
 		clientSocket.close();
 		closed = true;
+		logger.log("Disconnected!");
 	}
 }
