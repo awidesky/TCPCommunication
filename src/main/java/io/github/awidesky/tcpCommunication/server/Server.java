@@ -14,6 +14,7 @@ import java.nio.channels.SocketChannel;
 import java.text.SimpleDateFormat;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -36,10 +37,13 @@ public abstract class Server {
 	private ServerSocketChannel serverSocket;
 	private int port;
 	
+	private boolean closed = false;
+	
 	private final LoggerThread loggerThread = new LoggerThread();
 	protected final Logger logger;
 	
 	protected final Set<Connection> clients = new HashSet<>();
+	private final LinkedBlockingQueue<Runnable> mainLoopJobQueue = new LinkedBlockingQueue<>();
 	
 	public Server() throws IOException {
 		this(System.out);
@@ -75,62 +79,64 @@ public abstract class Server {
 			if(serverSocket.isOpen()) close(1000);
 			throw e;
 		}
-		pool.submit(this::listen);
+		mainLoopJobQueue.add(this::listen);
+		new Thread(this::mainLoop, "Server:" + port + "-mainLoop").start();
 	}
 	
-	private LinkedBlockingQueue<Runnable> r = new LinkedBlockingQueue<>();
 	
-	private void listen() {
-		while (true) {
+	private void mainLoop() {
+		while (!closed) {
 			try {
-				System.out.println("listen");
-				Iterator<Runnable> i = r.iterator();
-				while(i.hasNext()) {
-					i.next().run();
-					i.remove();
-				}
-				System.out.println("listen1111");
-				if (selector.select() == 0)
-					continue;
-				System.out.println("listen2222");
-
-				Iterator<SelectionKey> it = selector.selectedKeys().iterator();
-
-				while (it.hasNext()) {
-					SelectionKey key = it.next();
-					System.out.println("listen33333333");
-					/*if(((Connection)key.attachment()).closed.getAcquire()) {
-						System.out.println("listen3333");
-						key.attach(null);
-						key.cancel();
-						it.remove();
-						continue;
-					}*/
-					if (key.isValid()) {
-						System.out.println("listen4444");
-
-						if (key.isAcceptable()) {
-							System.out.println("accept");
-							// pool.submit(this::accept);
-							accept();
-						} else if (key.isReadable()) {
-							System.out.println("read");
-							pool.submit(() -> read((Connection) key.attachment()));
-						} else if (key.isWritable()) {
-							System.out.println("write");
-							pool.submit(() -> write((Connection) key.attachment()));
-						} else {
-							logger.log("Unsupported ready-operation : \"" + key.interestOps()
-									+ "\" from selected key : " + ((SocketChannel) key.channel()).getRemoteAddress());
-						}
-					}
-					it.remove();
-				}
-			} catch (IOException e) {
-				logger.log("Exception while selecting chennels!");
-				logger.log(e);
+				mainLoopJobQueue.take().run();
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
 		}
+	}
+
+	private void listen() {
+		try {
+			System.out.println("listen1111");
+			if (selector.select() == 0)
+				return;
+			System.out.println("listen2222");
+
+			Iterator<SelectionKey> it = selector.selectedKeys().iterator();
+
+			while (it.hasNext()) {
+				SelectionKey key = it.next();
+				System.out.println("listen33333333");
+				/*
+				 * if(((Connection)key.attachment()).closed.getAcquire()) {
+				 * System.out.println("listen3333"); key.attach(null); key.cancel();
+				 * it.remove(); continue; }
+				 */
+				if (key.isValid()) {
+					System.out.println("listen4444");
+
+					if (key.isAcceptable()) {
+						System.out.println("accept");
+						// pool.submit(this::accept);
+						accept();
+					} else if (key.isReadable()) {
+						System.out.println("read");
+						pool.submit(() -> read((Connection) key.attachment()));
+					} else if (key.isWritable()) {
+						System.out.println("write");
+						pool.submit(() -> write((Connection) key.attachment()));
+					} else {
+						logger.log("Unsupported ready-operation : \"" + key.interestOps() + "\" from selected key : "
+								+ ((SocketChannel) key.channel()).getRemoteAddress());
+					}
+				}
+				it.remove();
+			}
+		} catch (IOException e) {
+			logger.log("Exception while selecting chennels!");
+			logger.log(e);
+		}
+		mainLoopJobQueue.add(this::listen);
 	}
 	
 
@@ -154,20 +160,23 @@ public abstract class Server {
 	protected abstract void write(Connection client);
 	
 	public void close(long timeoutMillis) {
-		logger.log("Closing server...");
-		try {
-			if(pool != null) pool.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS);
-			if(clients != null) {
-				clients.parallelStream().forEach(Connection::close);
-				clients.clear();
+		mainLoopJobQueue.add(() -> {
+			logger.log("Closing server...");
+			try {
+				if (pool != null)
+					pool.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS);
+				if (clients != null) {
+					clients.parallelStream().forEach(Connection::close);
+					clients.clear();
+				}
+				if (serverSocket != null) serverSocket.close();
+				if (selector != null) selector.close();
+			} catch (IOException | InterruptedException e) {
+				SwingDialogs.error("Unable to close Server", "%e%", e, false);
 			}
-			if(serverSocket != null) serverSocket.close();
-			if(selector != null) selector.close();
-		} catch (IOException | InterruptedException e) {
-			SwingDialogs.error("Unable to close Server", "%e%", e, false);
-		}
-		serverSocket = null;
-		logger.log("Server closed!");
+			serverSocket = null;
+			logger.log("Server closed!");
+		});
 	}
 	
 	public static String getIP() {
@@ -200,6 +209,7 @@ public abstract class Server {
 		}
 		
 		public void send() throws IOException {
+			if(closed.getAcquire()) return;
 			int read = -1;
 			ByteBuffer buf;
 			while((buf = queue.peek()) != null || read != 0) {
@@ -214,6 +224,7 @@ public abstract class Server {
 		private ByteBuffer data = null;
 		
 		public byte[] read() throws IOException {
+			if(closed.getAcquire()) return null;
 			if(data == null) { //header must be read first
 				logger.logVerbose("Read package header : " + Protocol.formatExactByteSize(ch.read(header)));
 				if(!header.hasRemaining()) {
@@ -221,10 +232,11 @@ public abstract class Server {
 					if(packageLen == Protocol.Goodbye) {
 						logger.log("Client sent goodbye. Closing connection now without sending " + queue.size() + " package(s) in queue...");
 						try {
-							r.put(this::close);
+							mainLoopJobQueue.put(this::close);
+							mainLoopJobQueue.put(() -> clients.remove(this));
 						} catch (InterruptedException e) {
 							logger.log(e);
-						}//close();
+						}
 						return null;
 					}
 					data = ByteBuffer.allocate(packageLen);
@@ -252,13 +264,12 @@ public abstract class Server {
 		
 		public void close() {
 			try {
-				ch.keyFor(selector).cancel();
+				Optional.ofNullable(ch.keyFor(selector)).ifPresent(SelectionKey::cancel);
 				this.ch.close();
 				closed.set(true);
 			} catch (IOException e) {
 				SwingDialogs.error("Unable to close connection with : " + hash, "%e%", e, false);
 			}
-			clients.remove(this);
 			clear();
 		}
 	}

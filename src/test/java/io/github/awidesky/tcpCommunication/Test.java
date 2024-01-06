@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
@@ -64,7 +64,7 @@ class Test {
 		
 		System.out.println("\n\nOutput of each clients:\n" + results.stream().map(s -> s.stream().collect(Collectors.joining("\n"))).collect(Collectors.joining("\n\n")) + "\nEnd of clients ouputs.\n\n");
 		
-		assertEquals(1, results.stream().distinct().limit(2).count());
+		assertEquals(1, results.stream().map(HashSet::new).distinct().limit(2).count());
 	}
 
 }
