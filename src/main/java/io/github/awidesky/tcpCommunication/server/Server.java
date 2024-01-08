@@ -97,33 +97,25 @@ public abstract class Server {
 
 	private void listen() {
 		try {
-			System.out.println("listen1111");
 			if (selector.select() == 0)
 				return;
-			System.out.println("listen2222");
 
 			Iterator<SelectionKey> it = selector.selectedKeys().iterator();
 
 			while (it.hasNext()) {
 				SelectionKey key = it.next();
-				System.out.println("listen33333333");
 				/*
 				 * if(((Connection)key.attachment()).closed.getAcquire()) {
 				 * System.out.println("listen3333"); key.attach(null); key.cancel();
 				 * it.remove(); continue; }
 				 */
 				if (key.isValid()) {
-					System.out.println("listen4444");
 
 					if (key.isAcceptable()) {
-						System.out.println("accept");
-						// pool.submit(this::accept);
 						accept();
 					} else if (key.isReadable()) {
-						System.out.println("read");
 						pool.submit(() -> read((Connection) key.attachment()));
 					} else if (key.isWritable()) {
-						System.out.println("write");
 						pool.submit(() -> write((Connection) key.attachment()));
 					} else {
 						logger.log("Unsupported ready-operation : \"" + key.interestOps() + "\" from selected key : "
