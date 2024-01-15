@@ -22,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 
 import io.github.awidesky.guiUtil.Logger;
 import io.github.awidesky.guiUtil.LoggerThread;
@@ -87,6 +88,9 @@ public abstract class Server {
 	private void mainLoop() {
 		while (!closed) {
 			try {
+				
+				Stream.generate(mainLoopJobQueue::poll).limit(mainLoopJobQueue.size()).forEach(Runnable::run);
+				
 				mainLoopJobQueue.take().run();
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block
@@ -201,7 +205,7 @@ public abstract class Server {
 		}
 		
 		public void send() throws IOException {
-			if(closed.getAcquire()) return;
+			if(closed.get()) return;
 			int read = -1;
 			ByteBuffer buf;
 			while((buf = queue.peek()) != null || read != 0) {
@@ -216,19 +220,18 @@ public abstract class Server {
 		private ByteBuffer data = null;
 		
 		public byte[] read() throws IOException {
-			if(closed.getAcquire()) return null;
+			if(closed.get()) return null;
 			if(data == null) { //header must be read first
 				logger.logVerbose("Read package header : " + Protocol.formatExactByteSize(ch.read(header)));
 				if(!header.hasRemaining()) {
 					packageLen = header.flip().getInt();
 					if(packageLen == Protocol.Goodbye) {
 						logger.log("Client sent goodbye. Closing connection now without sending " + queue.size() + " package(s) in queue...");
-						try {
-							mainLoopJobQueue.put(this::close);
-							mainLoopJobQueue.put(() -> clients.remove(this));
-						} catch (InterruptedException e) {
-							logger.log(e);
-						}
+						//try {
+							mainLoopJobQueue.add(this::close);
+						//} catch (InterruptedException e) {
+						//	logger.log(e);
+						//}
 						return null;
 					}
 					data = ByteBuffer.allocate(packageLen);
@@ -256,9 +259,10 @@ public abstract class Server {
 		
 		public void close() {
 			try {
+				closed.set(true);
 				Optional.ofNullable(ch.keyFor(selector)).ifPresent(SelectionKey::cancel);
 				this.ch.close();
-				closed.set(true);
+				clients.remove(this);
 			} catch (IOException e) {
 				SwingDialogs.error("Unable to close connection with : " + hash, "%e%", e, false);
 			}

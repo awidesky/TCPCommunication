@@ -15,6 +15,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import io.github.awidesky.tcpCommunication.client.Client;
@@ -52,11 +54,14 @@ class Test {
 			}));
 
 		}
-		List<Collection<String>> results = futures.stream().map(t -> {
+		List<List<String>> results = futures.stream().map(t -> {
 			try {
-				return t.get();
+				return t.get(5000, TimeUnit.MILLISECONDS);
 			} catch (InterruptedException | ExecutionException e) {
-				return Set.of("");
+				return List.of(e.toString());
+			} catch (TimeoutException e) {
+				// TODO Auto-generated catch block
+				return List.of(e.toString());
 			}
 		}).toList();
 
