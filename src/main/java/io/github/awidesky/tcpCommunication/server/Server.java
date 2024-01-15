@@ -37,14 +37,15 @@ public abstract class Server {
 	private Selector selector;
 	private ServerSocketChannel serverSocket;
 	private int port;
+	private Thread serverMain;
 	
-	private boolean closed = false;
+	private volatile boolean closed = false;
 	
 	private final LoggerThread loggerThread = new LoggerThread();
 	protected final Logger logger;
 	
 	protected final Set<Connection> clients = new HashSet<>();
-	private final LinkedBlockingQueue<Runnable> mainLoopJobQueue = new LinkedBlockingQueue<>();
+	private final LinkedBlockingQueue<Connection> closeQueue = new LinkedBlockingQueue<>();
 	
 	public Server() throws IOException {
 		this(System.out);
@@ -80,24 +81,23 @@ public abstract class Server {
 			if(serverSocket.isOpen()) close(1000);
 			throw e;
 		}
-		mainLoopJobQueue.add(this::listen);
-		new Thread(this::mainLoop, "Server:" + port + "-mainLoop").start();
-	}
-	
-	
-	private void mainLoop() {
-		while (!closed) {
-			try {
-				
-				Stream.generate(mainLoopJobQueue::poll).limit(mainLoopJobQueue.size()).forEach(Runnable::run);
-				
-				mainLoopJobQueue.take().run();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+		serverMain = new Thread(() -> {
+			while (!closed) {
+				Connection c = closeQueue.poll();
+				while(c != null) {
+					c.close();
+					clients.remove(c);
+					c = closeQueue.poll();
+				}
+				Stream.generate(closeQueue::poll).limit(closeQueue.size()).forEach(Connection::close);
+				listen();
 			}
-		}
+		});
+		serverMain.setName("Server:" + port + "-mainLoop");
+		serverMain.setDaemon(true);
+		serverMain.start();
 	}
+	
 
 	private void listen() {
 		try {
@@ -132,7 +132,6 @@ public abstract class Server {
 			logger.log("Exception while selecting chennels!");
 			logger.log(e);
 		}
-		mainLoopJobQueue.add(this::listen);
 	}
 	
 
@@ -157,23 +156,29 @@ public abstract class Server {
 	protected abstract void write(Connection client);
 	
 	public void close(long timeoutMillis) {
-		mainLoopJobQueue.add(() -> {
-			logger.log("Closing server...");
-			try {
-				if (pool != null)
-					pool.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS);
-				if (clients != null) {
-					clients.parallelStream().forEach(Connection::close);
-					clients.clear();
-				}
-				if (serverSocket != null) serverSocket.close();
-				if (selector != null) selector.close();
-			} catch (IOException | InterruptedException e) {
-				SwingDialogs.error("Unable to close Server", "%e%", e, false);
+		if(closed) return;
+		closed = true;
+		logger.log("Closing server...");
+		try {
+			serverMain.join(timeoutMillis / 2);
+			if(serverMain.isAlive()) {
+				logger.log("Server main thread is not dead after waiting " + timeoutMillis + "ms! Interrupting...");
+				serverMain.interrupt();
 			}
-			serverSocket = null;
-			logger.log("Server closed!");
-		});
+			
+			if (pool != null)
+				pool.awaitTermination(timeoutMillis/ 2, TimeUnit.MILLISECONDS);
+			if (clients != null) {
+				clients.parallelStream().forEach(Connection::close);
+				clients.clear();
+			}
+			if (serverSocket != null) serverSocket.close();
+			if (selector != null) selector.close();
+		} catch (IOException | InterruptedException e) {
+			SwingDialogs.error("Unable to close Server", "%e%", e, false);
+		}
+		serverSocket = null;
+		logger.log("Server closed!");
 	}
 	
 	public static String getIP() {
@@ -229,7 +234,7 @@ public abstract class Server {
 					if(packageLen == Protocol.Goodbye) {
 						logger.log("Client sent goodbye. Closing connection now without sending " + queue.size() + " package(s) in queue...");
 						//try {
-							mainLoopJobQueue.add(this::close);
+							closeQueue.add(this);
 						//} catch (InterruptedException e) {
 						//	logger.log(e);
 						//}
@@ -263,7 +268,6 @@ public abstract class Server {
 				closed.set(true);
 				Optional.ofNullable(ch.keyFor(selector)).ifPresent(SelectionKey::cancel);
 				this.ch.close();
-				clients.remove(this);
 			} catch (IOException e) {
 				SwingDialogs.error("Unable to close connection with : " + hash, "%e%", e, false);
 			}
