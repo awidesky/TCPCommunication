@@ -144,6 +144,7 @@ public abstract class Server {
 			sc.configureBlocking(false);
 			Connection client = new Connection(sc, loggerThread.getLogger());
 			clients.add(client);
+			selector.wakeup();
 			sc.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, client);
 			logger.log("Connected : " + sc.getRemoteAddress() + "(hash : " + client.hash + ")");
 		} catch (IOException e) {
