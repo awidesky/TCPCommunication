@@ -117,13 +117,13 @@ public abstract class Server {
 
 					if (key.isAcceptable()) {
 						accept();
-					} else if (key.isReadable()) {
+						return;
+					} 
+					if (key.isReadable()) {
 						pool.submit(() -> read((Connection) key.attachment()));
-					} else if (key.isWritable()) {
+					}
+					if (key.isWritable()) {
 						pool.submit(() -> write((Connection) key.attachment()));
-					} else {
-						logger.log("Unsupported ready-operation : \"" + key.interestOps() + "\" from selected key : "
-								+ ((SocketChannel) key.channel()).getRemoteAddress());
 					}
 				}
 				it.remove();
